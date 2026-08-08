@@ -1,0 +1,636 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum SubscriptionPlan {
+  STARTER
+  GROWTH
+  BUSINESS
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  TRIALING
+  PAST_DUE
+  CANCELED
+}
+
+enum MembershipRole {
+  OWNER
+  ADMIN
+  MANAGER
+  MEMBER
+  VIEWER
+}
+
+enum DataSourceType {
+  FILE_CSV
+  FILE_XLSX
+  REST_API
+  SAGE
+  XERO
+  QUICKBOOKS
+  SHOPIFY
+  STRIPE
+  PAYFAST
+  YOCO
+  POS
+  BANK_FEED
+}
+
+enum DataSourceStatus {
+  ACTIVE
+  INACTIVE
+  ERROR
+}
+
+enum DatasetStatus {
+  PENDING
+  MAPPED
+  NORMALIZED
+  ERROR
+}
+
+enum ControlCategory {
+  REVENUE
+  PAYABLES
+  INVENTORY
+  BANKING
+  PAYROLL
+  CUSTOM
+}
+
+enum ControlStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  ARCHIVED
+}
+
+enum ControlRunStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum MatchStatus {
+  MATCHED
+  PARTIAL
+  UNMATCHED
+  DUPLICATE
+}
+
+enum ExceptionType {
+  MISSING_INVOICE
+  PARTIAL_INVOICE
+  AMOUNT_MISMATCH
+  DUPLICATE_INVOICE
+  UNMATCHED_INVOICE
+  MISSING_PAYMENT
+  INVENTORY_MISMATCH
+  CUSTOM
+}
+
+enum ExceptionSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum ExceptionStatus {
+  OPEN
+  ASSIGNED
+  INVESTIGATING
+  RESOLVED
+  VERIFIED
+  CLOSED
+  FALSE_POSITIVE
+}
+
+enum ResolutionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum NotificationType {
+  EXCEPTION_ASSIGNED
+  EXCEPTION_RESOLVED
+  CONTROL_FAILED
+  CONTROL_COMPLETED
+  SUBSCRIPTION_LIMIT
+  GENERAL
+}
+
+enum AuditAction {
+  CONTROL_CREATED
+  CONTROL_UPDATED
+  CONTROL_EXECUTED
+  EXCEPTION_CREATED
+  EXCEPTION_ASSIGNED
+  EXCEPTION_STATUS_CHANGED
+  EXCEPTION_RESOLVED
+  EVIDENCE_ADDED
+  COMMENT_ADDED
+  USER_INVITED
+  USER_ROLE_CHANGED
+  SUBSCRIPTION_CHANGED
+  DATA_SOURCE_CREATED
+  DATA_SOURCE_UPDATED
+  DATASET_UPLOADED
+  ORGANIZATION_UPDATED
+}
+
+enum ControlTemplateId {
+  REVENUE_ORDERS_TO_INVOICES
+  INVOICES_TO_PAYMENTS
+  PO_TO_SUPPLIER_INVOICE
+  POS_TO_INVENTORY
+  BANK_TO_ACCOUNTING
+  TIMESHEETS_TO_PAYROLL
+}
+
+// ─── Organization & Billing ──────────────────────────────────────────────────
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships  Membership[]
+  subscription Subscription?
+  entities     Entity[]
+  dataSources  DataSource[]
+  datasets     Dataset[]
+  controls     Control[]
+  controlRuns  ControlRun[]
+  exceptions   Exception[]
+  auditEvents  AuditEvent[]
+  notifications Notification[]
+}
+
+model Plan {
+  id          String           @id @default(cuid())
+  name        SubscriptionPlan @unique
+  displayName String
+  minPriceZar Int
+  maxPriceZar Int
+  description String?
+  createdAt   DateTime         @default(now())
+
+  features      PlanFeature[]
+  subscriptions Subscription[]
+}
+
+model PlanFeature {
+  id        String   @id @default(cuid())
+  planId    String
+  key       String
+  value     String
+  createdAt DateTime @default(now())
+
+  plan Plan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, key])
+}
+
+model Subscription {
+  id             String             @id @default(cuid())
+  organizationId String             @unique
+  planId         String
+  status         SubscriptionStatus @default(ACTIVE)
+  currentPeriodStart DateTime       @default(now())
+  currentPeriodEnd   DateTime
+  stripeCustomerId   String?
+  stripeSubscriptionId String?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  plan         Plan         @relation(fields: [planId], references: [id])
+  usage        Usage[]
+}
+
+model Usage {
+  id             String   @id @default(cuid())
+  subscriptionId String
+  key            String
+  count          Int      @default(0)
+  periodStart    DateTime
+  periodEnd      DateTime
+  updatedAt      DateTime @updatedAt
+
+  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@unique([subscriptionId, key, periodStart])
+}
+
+// ─── Users & Auth ────────────────────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String?
+  passwordHash  String?
+  emailVerified DateTime?
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  memberships          Membership[]
+  accounts             Account[]
+  sessions             Session[]
+  assignedExceptions   Exception[]          @relation("AssignedExceptions")
+  exceptionComments    ExceptionComment[]
+  exceptionEvidence    ExceptionEvidence[]
+  resolutions          Resolution[]
+  ownedControls        Control[]            @relation("ControlOwner")
+  auditEvents          AuditEvent[]
+  notifications        Notification[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Membership {
+  id             String         @id @default(cuid())
+  userId         String
+  organizationId String
+  role           MembershipRole @default(MEMBER)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, organizationId])
+}
+
+// ─── Business Structure ──────────────────────────────────────────────────────
+
+model Entity {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  externalId     String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branches     Branch[]
+  identities   EntityIdentity[]
+
+  @@index([organizationId])
+}
+
+model Branch {
+  id        String   @id @default(cuid())
+  entityId  String
+  name      String
+  code      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  entity Entity @relation(fields: [entityId], references: [id], onDelete: Cascade)
+
+  @@index([entityId])
+}
+
+model EntityIdentity {
+  id             String   @id @default(cuid())
+  entityId       String
+  sourceSystem   String
+  externalId     String?
+  normalizedName String
+  rawName        String
+  createdAt      DateTime @default(now())
+
+  entity Entity @relation(fields: [entityId], references: [id], onDelete: Cascade)
+
+  @@index([entityId])
+  @@index([normalizedName])
+}
+
+// ─── Data Layer ──────────────────────────────────────────────────────────────
+
+model DataSource {
+  id             String           @id @default(cuid())
+  organizationId String
+  name           String
+  type           DataSourceType
+  status         DataSourceStatus @default(ACTIVE)
+  config         Json             @default("{}")
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  datasets       Dataset[]
+  controlSources ControlSource[]
+
+  @@index([organizationId])
+}
+
+model Dataset {
+  id             String        @id @default(cuid())
+  organizationId String
+  dataSourceId   String
+  name           String
+  fileName       String?
+  fileKey        String?
+  status         DatasetStatus @default(PENDING)
+  rowCount       Int           @default(0)
+  columnMapping  Json          @default("{}")
+  metadata       Json          @default("{}")
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  dataSource   DataSource     @relation(fields: [dataSourceId], references: [id], onDelete: Cascade)
+  columns      DatasetColumn[]
+  records      DatasetRecord[]
+  controlSources ControlSource[]
+
+  @@index([organizationId])
+  @@index([dataSourceId])
+}
+
+model DatasetColumn {
+  id         String @id @default(cuid())
+  datasetId  String
+  name       String
+  index      Int
+  dataType   String @default("string")
+  sampleValues Json @default("[]")
+
+  dataset Dataset @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+
+  @@index([datasetId])
+}
+
+model DatasetRecord {
+  id         String   @id @default(cuid())
+  datasetId  String
+  externalId String?
+  rawData    Json
+  normalized Json     @default("{}")
+  createdAt  DateTime @default(now())
+
+  dataset Dataset @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+
+  @@index([datasetId])
+  @@index([externalId])
+}
+
+// ─── Controls ────────────────────────────────────────────────────────────────
+
+model Control {
+  id             String          @id @default(cuid())
+  organizationId String
+  name           String
+  description    String?
+  category       ControlCategory
+  templateId     ControlTemplateId?
+  status         ControlStatus   @default(DRAFT)
+  config         Json            @default("{}")
+  schedule       String?
+  tolerance      Decimal         @default(0) @db.Decimal(18, 2)
+  ownerId        String?
+  enabled        Boolean         @default(true)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  owner        User?           @relation("ControlOwner", fields: [ownerId], references: [id])
+  sources      ControlSource[]
+  rules        ControlRule[]
+  runs         ControlRun[]
+
+  @@index([organizationId])
+}
+
+model ControlSource {
+  id           String @id @default(cuid())
+  controlId    String
+  dataSourceId String?
+  datasetId    String?
+  role         String
+  fieldMapping Json   @default("{}")
+
+  control    Control     @relation(fields: [controlId], references: [id], onDelete: Cascade)
+  dataSource DataSource? @relation(fields: [dataSourceId], references: [id])
+  dataset    Dataset?    @relation(fields: [datasetId], references: [id])
+
+  @@index([controlId])
+}
+
+model ControlRule {
+  id          String @id @default(cuid())
+  controlId   String
+  name        String
+  description String?
+  condition   Json
+  severity    ExceptionSeverity @default(MEDIUM)
+  enabled     Boolean @default(true)
+  order       Int     @default(0)
+
+  control Control @relation(fields: [controlId], references: [id], onDelete: Cascade)
+
+  @@index([controlId])
+}
+
+model ControlRun {
+  id             String           @id @default(cuid())
+  organizationId String
+  controlId      String
+  status         ControlRunStatus @default(PENDING)
+  startedAt      DateTime?
+  completedAt    DateTime?
+  metrics        Json             @default("{}")
+  error          String?
+  createdAt      DateTime         @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  control      Control      @relation(fields: [controlId], references: [id], onDelete: Cascade)
+  matches      Match[]
+  exceptions   Exception[]
+
+  @@index([organizationId])
+  @@index([controlId])
+}
+
+model Match {
+  id           String      @id @default(cuid())
+  controlRunId String
+  status       MatchStatus
+  sourceRecord Json
+  targetRecord Json?
+  variance     Decimal?    @db.Decimal(18, 2)
+  metadata     Json        @default("{}")
+  createdAt    DateTime    @default(now())
+
+  controlRun ControlRun @relation(fields: [controlRunId], references: [id], onDelete: Cascade)
+
+  @@index([controlRunId])
+}
+
+// ─── Exceptions ──────────────────────────────────────────────────────────────
+
+model Exception {
+  id              String            @id @default(cuid())
+  organizationId  String
+  controlRunId    String
+  type            ExceptionType
+  title           String
+  description     String
+  severity        ExceptionSeverity
+  status          ExceptionStatus   @default(OPEN)
+  financialImpact Decimal           @default(0) @db.Decimal(18, 2)
+  expectedAmount  Decimal?          @db.Decimal(18, 2)
+  actualAmount    Decimal?          @db.Decimal(18, 2)
+  variance        Decimal?          @db.Decimal(18, 2)
+  sourceRecords   Json              @default("[]")
+  assignedToId    String?
+  detectedAt      DateTime          @default(now())
+  resolvedAt      DateTime?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  controlRun   ControlRun          @relation(fields: [controlRunId], references: [id], onDelete: Cascade)
+  assignedTo   User?               @relation("AssignedExceptions", fields: [assignedToId], references: [id])
+  comments     ExceptionComment[]
+  evidence     ExceptionEvidence[]
+  resolutions  Resolution[]
+
+  @@index([organizationId])
+  @@index([controlRunId])
+  @@index([status])
+  @@index([severity])
+  @@index([assignedToId])
+}
+
+model ExceptionComment {
+  id          String   @id @default(cuid())
+  exceptionId String
+  userId      String
+  content     String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  exception Exception @relation(fields: [exceptionId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id])
+
+  @@index([exceptionId])
+}
+
+model ExceptionEvidence {
+  id          String   @id @default(cuid())
+  exceptionId String
+  userId      String
+  fileName    String
+  fileKey     String
+  fileSize    Int
+  mimeType    String
+  createdAt   DateTime @default(now())
+
+  exception Exception @relation(fields: [exceptionId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id])
+
+  @@index([exceptionId])
+}
+
+model Resolution {
+  id          String           @id @default(cuid())
+  exceptionId String
+  userId      String
+  status      ResolutionStatus @default(PENDING)
+  summary     String
+  details     String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  exception Exception @relation(fields: [exceptionId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id])
+
+  @@index([exceptionId])
+}
+
+// ─── Notifications & Audit ───────────────────────────────────────────────────
+
+model Notification {
+  id             String           @id @default(cuid())
+  organizationId String
+  userId         String
+  type           NotificationType
+  title          String
+  message        String
+  read           Boolean          @default(false)
+  metadata       Json             @default("{}")
+  createdAt      DateTime         @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, userId])
+}
+
+model AuditEvent {
+  id             String      @id @default(cuid())
+  organizationId String
+  actorId        String?
+  action         AuditAction
+  entity         String
+  entityId       String?
+  metadata       Json        @default("{}")
+  createdAt      DateTime    @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  actor        User?        @relation(fields: [actorId], references: [id])
+
+  @@index([organizationId])
+  @@index([createdAt])
+}
