@@ -1,6 +1,3 @@
-import { promises as fs } from "fs";
-import path from "path";
-
 export interface StorageFile {
   key: string;
   buffer: Buffer;
@@ -8,24 +5,47 @@ export interface StorageFile {
   size: number;
 }
 
-const LOCAL_PATH = process.env.STORAGE_LOCAL_PATH ?? "./uploads";
+async function getLocalStorage() {
+  const [{ promises: fs }, path] = await Promise.all([
+    import("fs"),
+    import("path"),
+  ]);
 
-async function ensureDir(dir: string) {
-  await fs.mkdir(dir, { recursive: true });
+  function getStorageRoot(): string {
+    if (process.env.STORAGE_LOCAL_PATH) {
+      return path.isAbsolute(process.env.STORAGE_LOCAL_PATH)
+        ? process.env.STORAGE_LOCAL_PATH
+        : path.join(process.cwd(), process.env.STORAGE_LOCAL_PATH);
+    }
+
+    if (process.env.VERCEL) {
+      return path.join("/tmp", "ordin-uploads");
+    }
+
+    return path.join(process.cwd(), "uploads");
+  }
+
+  function resolveStoragePath(key: string): string {
+    const safeKey = key.replace(/\.\./g, "").replace(/^[/\\]+/, "");
+    return path.join(getStorageRoot(), safeKey);
+  }
+
+  return { fs, resolveStoragePath, path };
 }
 
 export async function uploadFile(
   organizationId: string,
   fileName: string,
   buffer: Buffer,
-  mimeType: string
+  _mimeType: string
 ): Promise<string> {
-  const key = `${organizationId}/${Date.now()}-${fileName}`;
   const storageType = process.env.STORAGE_TYPE ?? "local";
 
   if (storageType === "local") {
-    const filePath = path.join(LOCAL_PATH, key);
-    await ensureDir(path.dirname(filePath));
+    const { fs, resolveStoragePath, path } = await getLocalStorage();
+    const key = `${organizationId}/${Date.now()}-${fileName}`;
+    const filePath = resolveStoragePath(key);
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
     await fs.writeFile(filePath, buffer);
     return key;
   }
@@ -37,8 +57,8 @@ export async function getFile(key: string): Promise<Buffer> {
   const storageType = process.env.STORAGE_TYPE ?? "local";
 
   if (storageType === "local") {
-    const filePath = path.join(LOCAL_PATH, key);
-    return fs.readFile(filePath);
+    const { fs, resolveStoragePath } = await getLocalStorage();
+    return fs.readFile(resolveStoragePath(key));
   }
 
   throw new Error(`Storage type ${storageType} not implemented`);
@@ -48,9 +68,9 @@ export async function deleteFile(key: string): Promise<void> {
   const storageType = process.env.STORAGE_TYPE ?? "local";
 
   if (storageType === "local") {
-    const filePath = path.join(LOCAL_PATH, key);
+    const { fs, resolveStoragePath } = await getLocalStorage();
     try {
-      await fs.unlink(filePath);
+      await fs.unlink(resolveStoragePath(key));
     } catch {
       // file may not exist
     }
