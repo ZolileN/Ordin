@@ -6,19 +6,9 @@ import { calculateIntegrityScore } from "@/lib/control-engine/types";
 import { StatCard } from "@/components/ui/stat-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { DashboardCharts } from "@/components/dashboard/dashboard-charts";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-} from "recharts";
 
 export default async function DashboardPage() {
   const session = await auth();
@@ -128,50 +118,7 @@ export default async function DashboardPage() {
         <StatCard title="Failed Runs" value={formatNumber(failedRuns)} />
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Exception Severity</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {severityData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={200}>
-                <PieChart>
-                  <Pie data={severityData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80}>
-                    {severityData.map((entry) => (
-                      <Cell key={entry.name} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer>
-            ) : (
-              <p className="py-8 text-center text-sm text-zinc-400">No open exceptions</p>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Recent Control Runs</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {runChartData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={200}>
-                <BarChart data={runChartData}>
-                  <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 11 }} />
-                  <Tooltip />
-                  <Bar dataKey="matched" fill="#22c55e" name="Matched" />
-                  <Bar dataKey="exceptions" fill="#ef4444" name="Exceptions" />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <p className="py-8 text-center text-sm text-zinc-400">No control runs yet</p>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+      <DashboardCharts severityData={severityData} runChartData={runChartData} />
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
