@@ -11,7 +11,7 @@ Ordin is a multi-tenant SaaS platform that sits above a company's existing busin
 ### Prerequisites
 
 - Node.js 20+
-- PostgreSQL database
+- PostgreSQL — **Docker** (recommended) or a cloud provider such as [Neon](https://neon.tech)
 
 ### Setup
 
@@ -21,12 +21,31 @@ npm install
 
 # Configure environment
 cp .env.example .env
-# Edit .env with your DATABASE_URL and AUTH_SECRET
 
-# Set up database
+# Generate an auth secret (paste into .env as AUTH_SECRET)
+openssl rand -base64 32
+```
+
+#### Database (pick one)
+
+**Option A — Docker (easiest for local dev)**
+
+```bash
+docker compose up -d
+# DATABASE_URL in .env should already match docker-compose defaults:
+# postgresql://ordin:ordin@localhost:5432/ordin?schema=public
+```
+
+**Option B — Neon / cloud Postgres**
+
+1. Create a free project at [neon.tech](https://neon.tech)
+2. Copy the connection string into `.env` as `DATABASE_URL`
+3. Ensure it includes `?sslmode=require` if required by your provider
+
+#### Finish setup
+
+```bash
 npm run db:setup
-
-# Start development server
 npm run dev
 ```
 
@@ -68,6 +87,7 @@ The demo organization "Acme Services" includes ~1,000 orders, ~950 invoices, and
 | `npm run dev` | Start development server |
 | `npm run build` | Production build |
 | `npm test` | Run test suite |
+| `npm run db:docker` | Start local Postgres via Docker |
 | `npm run db:setup` | Push schema + seed data |
 | `npm run db:seed` | Seed demo data only |
 
