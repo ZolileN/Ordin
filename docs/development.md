@@ -3,23 +3,37 @@
 ## Environment Variables
 
 ```bash
-DATABASE_URL=          # PostgreSQL connection string
+DATABASE_URL=          # PostgreSQL connection string (see below)
 AUTH_SECRET=           # NextAuth secret (generate with openssl rand -base64 32)
 NEXT_PUBLIC_APP_URL=   # App URL (http://localhost:3000 for dev)
 STORAGE_TYPE=local     # local | s3 (future)
 STORAGE_LOCAL_PATH=./uploads
 ```
 
+### Database connection
+
+**P1000 authentication failed** means `DATABASE_URL` in `.env` does not match a running Postgres instance.
+
+| Setup | `DATABASE_URL` |
+|-------|----------------|
+| Docker (`docker compose up -d`) | `postgresql://ordin:ordin@localhost:5432/ordin?schema=public` |
+| Neon / cloud | Paste the connection string from your provider dashboard |
+
+After copying `.env.example` to `.env`, update `DATABASE_URL` and `AUTH_SECRET` before running `npm run db:setup`.
+
 ## Database
 
 ```bash
+# Start local Postgres (Docker)
+docker compose up -d
+
 # Push schema changes
 npm run db:push
 
 # Seed demo data
 npm run db:seed
 
-# Full setup
+# Full setup (schema + seed)
 npm run db:setup
 ```
 
